@@ -15,7 +15,12 @@ class AccountStatementImportSheetMapping(models.Model):
     )
     float_thousands_sep = fields.Selection(
         string="Thousands Separator",
-        selection=[("dot", "dot (.)"), ("comma", "comma (,)"), ("none", "none")],
+        selection=[
+            ("dot", "dot (.)"),
+            ("comma", "comma (,)"),
+            ("quote", "quote (')"),
+            ("none", "none"),
+        ],
         default="dot",
     )
     float_decimal_sep = fields.Selection(
@@ -78,6 +83,13 @@ class AccountStatementImportSheetMapping(models.Model):
     amount_credit_column = fields.Char(
         string="Credit amount column",
         help="Credit amount of transaction in journal's currency",
+    )
+    amount_inverse_sign = fields.Boolean(
+        string="Inverse sign of amount",
+        help="In some cases such as in credit card statements the "
+        "amounts are expressed in the inverse sign. "
+        "By setting this flag during the upload the amounts "
+        "will be inverted in sign.",
     )
     balance_column = fields.Char(
         help="Balance after transaction in journal's currency",
@@ -210,6 +222,7 @@ class AccountStatementImportSheetMapping(models.Model):
         separators = {
             "dot": ".",
             "comma": ",",
+            "quote": "'",
             "none": "",
         }
         return (
