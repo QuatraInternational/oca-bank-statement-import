@@ -4,6 +4,9 @@
 
 import itertools
 import logging
+import math
+import re
+from collections.abc import Iterable
 from datetime import datetime
 from decimal import Decimal
 from io import StringIO
@@ -82,8 +85,8 @@ class AccountStatementImportSheetParser(models.TransientModel):
             balance_end = last_line["balance"]
             data.update(
                 {
-                    "balance_start": float(balance_start),
-                    "balance_end_real": float(balance_end),
+                    "balance_start": balance_start,
+                    "balance_end_real": balance_end,
                 }
             )
         transactions = list(
@@ -97,7 +100,11 @@ class AccountStatementImportSheetParser(models.TransientModel):
 
     def _get_column_indexes(self, header, column_name, mapping):
         column_indexes = []
-        if mapping[column_name] and "," in mapping[column_name]:
+        if (
+            mapping[column_name]
+            and isinstance(mapping[column_name], Iterable)
+            and "," in mapping[column_name]
+        ):
             # We have to concatenate the values
             column_names_or_indexes = mapping[column_name].split(",")
         else:
@@ -319,7 +326,6 @@ class AccountStatementImportSheetParser(models.TransientModel):
                 if columns["bank_account_column"]
                 else None
             )
-
             if currency != currency_code:
                 continue
 
@@ -332,17 +338,20 @@ class AccountStatementImportSheetParser(models.TransientModel):
                 balance = None
 
             if debit_credit is not None:
-                amount = amount.copy_abs()
+                amount = abs(amount)
                 if debit_credit == mapping.debit_value:
                     amount = -amount
 
             if original_amount:
-                original_amount = self._parse_decimal(
-                    original_amount, mapping
-                ).copy_sign(amount)
+                original_amount = math.copysign(
+                    self._parse_decimal(original_amount, mapping), amount
+                )
             else:
                 original_amount = 0.0
-
+            if mapping.amount_inverse_sign:
+                amount = -amount
+                original_amount = -original_amount
+                balance = -balance if balance is not None else balance
             line = {
                 "timestamp": timestamp,
                 "amount": amount,
@@ -450,11 +459,18 @@ class AccountStatementImportSheetParser(models.TransientModel):
     @api.model
     def _parse_decimal(self, value, mapping):
         if isinstance(value, Decimal):
-            return value
+            return float(value)
         elif isinstance(value, float):
-            return Decimal(value)
-        value = value or "0"
+            return value
         thousands, decimal = mapping._get_float_separators()
+        # Remove all characters except digits, thousands separator,
+        # decimal separator, and signs
+        value = (
+            re.sub(
+                r"[^\d\-+" + re.escape(thousands) + re.escape(decimal) + "]+", "", value
+            )
+            or "0"
+        )
         value = value.replace(thousands, "")
         value = value.replace(decimal, ".")
-        return Decimal(value)
+        return float(value)
